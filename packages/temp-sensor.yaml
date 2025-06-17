@@ -16,6 +16,7 @@ sensor:
       unit_of_measurement: "°F"
     humidity:
       name: $garage_humidity_name
+      id: garage_humidity_sensor
       filters:
         - lambda: |-
             // Compute current dew point (Magnus formula simplified)
