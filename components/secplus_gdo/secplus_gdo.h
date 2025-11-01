@@ -26,6 +26,8 @@
 #include "light/gdo_light.h"
 #include "lock/gdo_lock.h"
 #include "gdo.h"
+#include <utility>
+#include <string>
 
 namespace esphome {
 namespace secplus_gdo {
@@ -38,33 +40,67 @@ namespace secplus_gdo {
         void start_gdo() { start_gdo_ = true; }
 
         // Use Late priority so we do not start the GDO lib until all saved preferences are loaded
-        float get_setup_priority() const override { return setup_priority::BEFORE_CONNECTION; }
+        [[nodiscard]] float get_setup_priority() const override { return setup_priority::BEFORE_CONNECTION; }
 
         void register_protocol_select(GDOSelect *select) { this->protocol_select_ = select; }
         void set_protocol_state(gdo_protocol_type_t protocol) { if (this->protocol_select_) {
             this->protocol_select_->update_state(protocol); }
         }
 
-        void register_motion(std::function<void(bool)> f) { f_motion = f; }
+        void register_motion(std::function<void(bool)> &&f) { f_motion = std::move(f); }
         void set_motion_state(gdo_motion_state_t state) { if (f_motion) { f_motion(state == GDO_MOTION_STATE_DETECTED); } }
 
-        void register_obstruction(std::function<void(bool)> f) { f_obstruction = f; }
+        void register_obstruction(std::function<void(bool)> &&f) { f_obstruction = std::move(f); }
         void set_obstruction(gdo_obstruction_state_t state) {
             if (f_obstruction) { f_obstruction(state == GDO_OBSTRUCTION_STATE_OBSTRUCTED); }
         }
 
-        void register_button(std::function<void(bool)> f) { f_button = f; }
-        void set_button_state(gdo_button_state_t state) { if (f_button) { f_button(state == GDO_BUTTON_STATE_PRESSED); } }
+        void register_button(std::function<void(bool)> &&f) { f_button = std::move(f); }
+        void set_button_state(gdo_button_state_t state) {
+            if (state == GDO_BUTTON_STATE_PRESSED) {
+                button_triggered_ = true;
+            }
+            if (f_button) {
+                f_button(state == GDO_BUTTON_STATE_PRESSED);
+            }
+        }
 
-        void register_motor(std::function<void(bool)> f) { f_motor = f; }
-        void set_motor_state(gdo_motor_state_t state) { if (f_motor) { f_motor(state == GDO_MOTOR_STATE_ON); } }
+        void register_motor(std::function<void(bool)> &&f) { f_motor = std::move(f); }
+        void set_motor_state(gdo_motor_state_t state) {
+            if (f_motor) {
+                f_motor(state == GDO_MOTOR_STATE_ON);
+            }
+            if (state == GDO_MOTOR_STATE_ON) {
+                if (!button_triggered_ && !cover_triggered_ && f_wireless_remote) {
+                    f_wireless_remote(true);
+                    this->set_timeout("wireless_remote_off", 500, [this]() {
+                        if (f_wireless_remote) {
+                            f_wireless_remote(false);
+                        }
+                    });
+                }
+                button_triggered_ = false;
+                cover_triggered_ = false;
+            }
+        }
 
-        void register_sync(std::function<void(bool)> f) { f_sync = f; }
+        void register_wireless_remote(std::function<void(bool)> &&f) { f_wireless_remote = std::move(f); }
 
-        void register_openings(std::function<void(uint16_t)> f) { f_openings = f; }
+        void notify_cover_command() { cover_triggered_ = true; }
+
+        void register_sync(std::function<void(bool)> &&f) { f_sync = std::move(f); }
+
+        void register_battery(std::function<void(std::string)> &&f) { f_battery = std::move(f); }
+        void set_battery_state(gdo_battery_state_t state) {
+            if (f_battery && state != GDO_BATT_STATE_UNKNOWN) {
+                f_battery(gdo_battery_state_to_string(state));
+            }
+        }
+
+        void register_openings(std::function<void(uint16_t)> &&f) { f_openings = std::move(f); }
         void set_openings(uint16_t openings) { if (f_openings) { f_openings(openings); } }
 
-        void register_door(GDODoor *door) { this->door_ = door; }
+        void register_door(GDODoor *door) { this->door_ = door; door->set_parent(this); }
         void set_door_state(gdo_door_state_t state, float position) { if (this->door_) { this->door_->set_state(state, position); } }
 
         void register_light(GDOLight *light) { this->light_ = light; }
@@ -101,6 +137,7 @@ namespace secplus_gdo {
         std::function<void(bool)>                    f_obstruction{nullptr};
         std::function<void(bool)>                    f_button{nullptr};
         std::function<void(bool)>                    f_motor{nullptr};
+        std::function<void(bool)>                    f_wireless_remote{nullptr};
         std::function<void(bool)>                    f_sync{nullptr};
         GDODoor*                                     door_{nullptr};
         GDOLight*                                    light_{nullptr};
@@ -113,6 +150,9 @@ namespace secplus_gdo {
         GDOSwitch*                                   learn_switch_{nullptr};
         GDOSwitch*                                   toggle_only_switch_{nullptr};
         bool                                         start_gdo_{false};
+        bool                                         cover_triggered_{false};
+        bool                                         button_triggered_{false};
+        std::function<void(std::string)>             f_battery{nullptr};
 
     }; // GDOComponent
 } // namespace secplus_gdo

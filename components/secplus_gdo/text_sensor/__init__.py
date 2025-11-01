@@ -1,6 +1,6 @@
 """
 /*
- * Copyright (C) 2024  Konnected Inc.
+ * Copyright (C) 2025 CircuitSetup
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,34 +15,28 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
- """
+"""
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor
+from esphome.components import text_sensor
 from esphome.const import CONF_ID
 
 from .. import SECPLUS_GDO_CONFIG_SCHEMA, secplus_gdo_ns, CONF_SECPLUS_GDO_ID
 
 DEPENDENCIES = ["secplus_gdo"]
 
-GDOBinarySensor = secplus_gdo_ns.class_(
-    "GDOBinarySensor", binary_sensor.BinarySensor, cg.Component
+GDOTextSensor = secplus_gdo_ns.class_(
+    "GDOTextSensor", text_sensor.TextSensor, cg.Component
 )
 
 CONF_TYPE = "type"
 TYPES = {
-    "motion": "register_motion",
-    "obstruction": "register_obstruction",
-    "motor": "register_motor",
-    "button": "register_button",
-    "sync": "register_sync",
-    "wireless_remote": "register_wireless_remote",
+    "battery": "register_battery",
 }
 
-
 CONFIG_SCHEMA = (
-    binary_sensor.binary_sensor_schema(GDOBinarySensor)
+    text_sensor.text_sensor_schema(GDOTextSensor)
     .extend(
         {
             cv.Required(CONF_TYPE): cv.enum(TYPES, lower=True),
@@ -51,13 +45,11 @@ CONFIG_SCHEMA = (
     .extend(SECPLUS_GDO_CONFIG_SCHEMA)
 )
 
-
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
-    await binary_sensor.register_binary_sensor(var, config)
+    await text_sensor.register_text_sensor(var, config)
     await cg.register_component(var, config)
     parent = await cg.get_variable(config[CONF_SECPLUS_GDO_ID])
     fcall = str(parent) + "->" + str(TYPES[config[CONF_TYPE]])
-    text = fcall + "(std::bind(&" + str(GDOBinarySensor) + "::publish_state," + str(config[CONF_ID]) + ",std::placeholders::_1))"
-    cg.add((cg.RawExpression(text)))
-
+    text = fcall + "(std::bind(&" + str(GDOTextSensor) + "::publish_state," + str(config[CONF_ID]) + ",std::placeholders::_1))"
+    cg.add(cg.RawExpression(text))
